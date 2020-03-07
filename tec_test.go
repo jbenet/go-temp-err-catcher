@@ -7,26 +7,29 @@ import (
 )
 
 var (
-	ErrTemp  = ErrTemporary{fmt.Errorf("ErrTemp")}
-	ErrSkip  = fmt.Errorf("ErrSkip")
-	ErrOther = fmt.Errorf("ErrOther")
+	ErrTemp    = ErrTemporary{fmt.Errorf("ErrTemp")}
+	ErrWrapped = fmt.Errorf("MyError: %w", ErrTemp)
+	ErrSkip    = fmt.Errorf("ErrSkip")
+	ErrOther   = fmt.Errorf("ErrOther")
+	errs       = map[error]bool{
+		ErrTemp:    true,
+		ErrWrapped: true,
+		ErrSkip:    false,
+		ErrOther:   false,
+	}
 )
 
 func testTec(t *testing.T, c TempErrCatcher, errs map[error]bool) {
 	for e, expected := range errs {
 		if c.IsTemporary(e) != expected {
-			t.Error("expected %s to be %v", e, expected)
+			t.Errorf("expected %s to be %v", e, expected)
 		}
 	}
 }
 
 func TestNil(t *testing.T) {
 	var c TempErrCatcher
-	testTec(t, c, map[error]bool{
-		ErrTemp:  true,
-		ErrSkip:  false,
-		ErrOther: false,
-	})
+	testTec(t, c, errs)
 }
 
 func TestWait(t *testing.T) {
@@ -35,11 +38,7 @@ func TestWait(t *testing.T) {
 	c.Wait = func(t time.Duration) {
 		worked <- t
 	}
-	testTec(t, c, map[error]bool{
-		ErrTemp:  true,
-		ErrSkip:  false,
-		ErrOther: false,
-	})
+	testTec(t, c, errs)
 
 	// should've called it once
 	select {
@@ -48,7 +47,14 @@ func TestWait(t *testing.T) {
 		t.Error("did not call our Wait func")
 	}
 
-	// should've called it ONLY once
+	// should've called it twice
+	select {
+	case <-worked:
+	default:
+		t.Error("did not call our Wait func")
+	}
+
+	// but not thrice
 	select {
 	case <-worked:
 		t.Error("called our Wait func more than once")
@@ -58,11 +64,7 @@ func TestWait(t *testing.T) {
 
 func TestTemporary(t *testing.T) {
 	var c TempErrCatcher
-	testTec(t, c, map[error]bool{
-		ErrTemp:  true,
-		ErrSkip:  false,
-		ErrOther: false,
-	})
+	testTec(t, c, errs)
 }
 
 func TestDoubles(t *testing.T) {
