@@ -1,16 +1,19 @@
 # go-temp-err-catcher
 
-This is a little package to use with your net.Listeners.
+This package provides a way to detect temporary errors, automatically applying an exponential
+backoff. This is useful, for example, in `Accept` loops where the underlying listener may have a
+temporary failure (e.g., because you have too many open file descriptors).
+
+The main function is `TempErrCatcher.IsTemporary`. It works by:
+
+1. Detecting if the error is temporary (implements a `Temporary() bool` method that returns true). E.g., [`net.Error`](https://pkg.go.dev/net#Error) (ignore the warning, this library exists to handle those "few exceptions" and avoids the pitfalls with an exponential backoff).
+2. Sleeping an exponentially increasing delay (the delay resets after a we fail to detect any temporary errors for a while).
 
 Docs: https://godoc.org/github.com/jbenet/go-temp-err-catcher
 
-Get:
-
-  go get github.com/jbenet/go-temp-err-catcher
-
 ## Examples
 
-It is meant to be used with things like net.Lister.Accept:
+This library is meant to be used with things like `net.Lister.Accept`:
 
 ```go
 import (
@@ -18,11 +21,14 @@ import (
 )
 
 func listen(listener net.Listener) {
+  // The TempErrCatcher tracks the current exponential backoff and detects "strings"
+  // of temporary errors. Use one per potential error source.
   var c tec.TempErrCatcher
 
   for {
     conn, err := listener.Accept()
     if err != nil && c.IsTemporary(c) {
+      // IsTemporary applies the backoff internally, so there's no need to sleep here.
       continue
     }
     return conn, err
